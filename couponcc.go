@@ -9,7 +9,12 @@ import (
 	"log"
 	"time"
 	//"strconv"
-	//"strings"
+	"strings"
+)
+
+const (
+	SENT = iota
+	APPLY
 )
 
 const (
@@ -32,15 +37,15 @@ type CouponBatch struct {
 	//面额
 	Denomination int `json:"denomination,omitempty"`
 	//生效时间
-	EffectiveDate uint64 `json:"effectiveDate,omitempty"`
+	EffectiveDate int64 `json:"effectiveDate,omitempty"`
 	//失效时间
-	ExpiringDate uint64 `json:"expiringDate,omitempty"`
+	ExpiringDate int64 `json:"expiringDate,omitempty"`
 	//可申请开始时间
-	ApplyStartDate uint64 `json:"applyStartDate,omitempty"`
+	ApplyStartDate int64 `json:"applyStartDate,omitempty"`
 	//可申请结束时间
-	ApplyEndDate uint64 `json:"applyEndDate,omitempty"`
+	ApplyEndDate int64 `json:"applyEndDate,omitempty"`
 	//发布时间
-	PublishDate uint64 `json:"publishDate,omitempty"`
+	PublishDate int64  `json:"publishDate,omitempty"`
 	BudgetNo    string `json:"budgetNo,omitempty"`
 	//渠道号
 	Channel uint64 `json:"channel,omitempty"`
@@ -60,7 +65,7 @@ type CouponBatch struct {
 	MaximumUsage int    `json:"maximumUsage,omitempty"`
 	ApplyLimit   int    `json:"applyLimit,omitempty"`
 	Creator      uint64 `json:"creator,omitempty"`
-	CreateDate   uint64 `json:"createDate,omitempty"`
+	CreateDate   int64  `json:"createDate,omitempty"`
 	Disabled     bool   `json:"disabled,omitempty"`
 	ShopId       uint64 `json:"shopId,omitempty"`
 	ShopName     string `json:"shopName,omitempty"`
@@ -72,11 +77,12 @@ type CouponBatch struct {
 
 //优惠券信息
 type Coupon struct {
-	Id          uint64 `json:"id,omitempty"`
-	BatchSn     string `json:"batchSn,omitempty"`
-	Sn          string `json:"sn,omitempty"`
+	Id      uint64 `json:"id,omitempty"`
+	BatchSn string `json:"batchSn,omitempty"`
+	Sn      string `json:"sn,omitempty"`
+	//1: 发放 2：领取
 	ReceiveType int    `json:"receiveType,omitempty"`
-	CreateDate  uint64 `json:"createDate,omitempty"`
+	CreateDate  int64  `json:"createDate,omitempty"`
 	Creator     uint64 `json:"creator,omitempty"`
 	Owner       uint64 `json:"owner,omitempty"`
 	Status      int    `json:"status,omitempty"`
@@ -88,8 +94,8 @@ type CouponBatchDto struct {
 	BatchSn            string                 `json:"batchSn,omitempty"`
 	BatchType          int                    `json:"omitempty,omitempty"`
 	BatchTypeDesc      string                 `json:"batchTypeDesc,omitempty"`
-	EffectiveStartTime uint64                 `json:"effectiveStartTime,omitempty"`
-	EffectiveEndTime   uint64                 `json:"effectiveEndTime,omitempty"`
+	EffectiveStartTime int64                  `json:"effectiveStartTime,omitempty"`
+	EffectiveEndTime   int64                  `json:"effectiveEndTime,omitempty"`
 	Money              int                    `json:"money,omitempty"`
 	ShopId             uint64                 `json:"shopId,omitempty"`
 	UsageRuleType      int                    `json:"usageRuleType,omitempty"`
@@ -100,7 +106,7 @@ type CouponBatchDto struct {
 	StatusDesc         string                 `json:"statusDesc,omitempty"`
 	Description        string                 `json:"description,omitempty"`
 	Picture            string                 `json:"picture,omitempty"`
-	PublishTime        uint64                 `json:"publishTime,omitempty"`
+	PublishTime        int64                  `json:"publishTime,omitempty"`
 }
 
 // 优惠券dto
@@ -133,6 +139,7 @@ func (cc *CouponChaincode) Invoke(stub shim.ChaincodeStubInterface, function str
 		return re, err
 	} else if "applyCoupon" == function {
 		re, err := cc.applyCoupon(ccStub, args)
+		return re, err
 	} else if "sendCoupon" == function {
 
 	} else if "consumeCoupon" == function {
@@ -179,11 +186,13 @@ func (cc *CouponChaincode) queryCouponBatch(stub *shim.ChaincodeStub, args []str
 //couponbatch dto --> cb
 func (cc *CouponChaincode) cbDto2Cb(cbDto *CouponBatchDto) *CouponBatch {
 	cb := &CouponBatch{Id: cbDto.Id, Sn: cbDto.BatchSn, Name: cbDto.BatchName,
-		Type: cbDto.BatchType, Denomination: cbDto.Money,
+		BatchType: cbDto.BatchType, Denomination: cbDto.Money,
 		EffectiveDate: cbDto.EffectiveStartTime, ExpiringDate: cbDto.EffectiveEndTime,
-		//ApplyStartDate:,ApplyEndDate:,BudgetNo:,
 		PublishDate: cbDto.PublishTime, Desc: cbDto.Description, ShopId: cbDto.ShopId,
-		Picture: cbDto.Picture, Status: cbDto.Status}
+		Picture: cbDto.Picture, Status: cbDto.Status, CouponType: cbDto.UsageRuleType}
+	if cbDto.UsageRuleType == 1 {
+		cb.OrderPriceLimit = cbDto.UsageRule["minAmount"].(int)
+	}
 	return cb
 
 }
@@ -191,10 +200,11 @@ func (cc *CouponChaincode) cbDto2Cb(cbDto *CouponBatchDto) *CouponBatch {
 //couponbatch cb --> dto
 func (cc *CouponChaincode) cb2Dto(cb *CouponBatch) *CouponBatchDto {
 	dto := &CouponBatchDto{
-		Id: cb.Id, BatchSn: cb.Sn, BatchType: cb.Type,
+		Id: cb.Id, BatchSn: cb.Sn, BatchType: cb.BatchType, UsageRuleType: cb.CouponType,
 		EffectiveStartTime: cb.EffectiveDate, EffectiveEndTime: cb.ExpiringDate,
 		Money: cb.Denomination, ShopId: cb.ShopId, BatchName: cb.Name, Status: cb.Status,
 		Description: cb.Desc, Picture: cb.Picture, PublishTime: cb.PublishDate}
+	dto.UsageRule["minAmount"] = cb.OrderPriceLimit
 	return dto
 }
 
@@ -231,11 +241,14 @@ func (cc *CouponChaincode) createCouponBatch(stub *shim.ChaincodeStub, args []st
 	return []byte("success"), nil
 }
 
+/**
+* 申请优惠券，优惠券合法性验证&用户合法性验证&生成优惠券
+ */
 func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("Invalid number of arguments.")
 	}
-	cpDto := &CouponDto{}
+	cpDto := &CouponInfoDto{}
 	err := json.Unmarshal([]byte(args[0]), cpDto)
 	if err != nil {
 		return nil, fmt.Errorf("json.Unmarshal args[0] error: %v", err)
@@ -245,7 +258,46 @@ func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) 
 	if err != nil {
 		return nil, fmt.Errorf("getCouponBatch error: %v", err)
 	}
+	ok, err := cc.checkCouponBatch(couponBatch)
+	if err != nil {
+		return nil, fmt.Errorf("check CB error: %v", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("invalid CB")
+	}
+	ok, err = cc.checkUserLegality(stub, cp, couponBatch)
+	if err != nil {
+		return nil, fmt.Errorf("check user error:%v", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("illegal user")
+	}
+	err = cc.saveCoupon(stub, cp)
+	if err != nil {
+		return nil, fmt.Errorf("save coupon error: %v", err)
+	}
+	err = cc.saveCouponOfBatch(stub, cp)
+	if err != nil {
+		return nil, fmt.Errorf("save coupon batch relation error: %v", err)
+	}
+	err = cc.saveCouponsOfUserBatch(stub, cp)
+	if err != nil {
+		return nil, fmt.Errorf("save user coupon relation error: %v", err)
+	}
+	err = cc.saveCouponBatchOfUser(stub, cp.Owner, cp.BatchSn)
+	if err != nil {
+		return nil, fmt.Errorf("save user couponbatch relation error: %v", err)
+	}
+	return []byte("success"), nil
+}
 
+func (cc *CouponChaincode) saveCoupon(stub *shim.ChaincodeStub, cp *Coupon) error {
+	jsonBytes, err := json.Marshal(cp)
+	if err != nil {
+		return fmt.Errorf("json.Marshal cb error, %v", err)
+	}
+	err = stub.PutState(COUPON_KEY+cp.BatchSn+cp.Sn, jsonBytes)
+	return err
 }
 
 //将cb json后，存入worldstate
@@ -273,15 +325,122 @@ func (cc *CouponChaincode) getCouponBatch(stub *shim.ChaincodeStub, sn string) (
 }
 
 //检验cb的有效性
-func (cc *CouponChaincode) checkCouponBatch(cb *CouponBatch) (bool, err) {
+func (cc *CouponChaincode) checkCouponBatch(cb *CouponBatch) (bool, error) {
 	//status 验证
-	if cb.status != 1 {
+	if cb.Status != 1 && cb.Status != 2 {
 		return false, nil
 	}
+	now := getCurMilliSeconds()
+	if now < cb.PublishDate || now < cb.ApplyStartDate || now > cb.ExpiringDate {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (cc *CouponChaincode) checkUserLegality(stub *shim.ChaincodeStub, coupon *Coupon, cb *CouponBatch) (bool, error) {
+	//获取用户在当前批次下已经领取的优惠券
+	coupons, err := cc.getCouponsOfUserBatch(stub, coupon.Owner, cb.Sn)
+	if err != nil {
+		return false, err
+	}
+	//如果没有领取过，则可以合法领取
+	if coupons == nil || len(coupons) == 0 {
+		return true, nil
+	}
+	ac, _ := cc.applyAndSendAmount(coupons)
+	//已领取数量不能大于批次限制
+	if ac >= cb.ApplyLimit {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (cc *CouponChaincode) getCouponsOfUserBatch(stub *shim.ChaincodeStub, uid uint64, sn string) ([]string, error) {
+	key := COUPONS_OF_USER_BATCH_KEY + string(uid) + sn
+	return cc.getSplitableValues(stub, key)
+}
+
+func (cc *CouponChaincode) saveCouponsOfUserBatch(stub *shim.ChaincodeStub, cp *Coupon) error {
+	newSn := ""
+	if cp.ReceiveType == APPLY {
+		newSn = cp.Sn + "a"
+	} else {
+		newSn = cp.Sn + "s"
+	}
+	key := COUPONS_OF_USER_BATCH_KEY + string(cp.Owner) + cp.BatchSn
+	return cc.appendSplitableValue(stub, key, newSn)
+}
+
+func (cc *CouponChaincode) getCouponBatchsOfUser(stub *shim.ChaincodeStub, uid uint64) ([]string, error) {
+	key := COUPONBATCH_OF_USER_KEY + string(uid)
+	return cc.getSplitableValues(stub, key)
+}
+
+func (cc *CouponChaincode) saveCouponBatchOfUser(stub *shim.ChaincodeStub, uid uint64, sn string) error {
+	key := COUPONBATCH_OF_USER_KEY + string(uid)
+	return cc.appendSplitableValue(stub, key, sn)
+}
+
+func (cc *CouponChaincode) applyAndSendAmount(coupons []string) (int, int) {
+	send := 0
+	apply := 0
+	for _, cp := range coupons {
+		if strings.HasSuffix(cp, "a") {
+			apply++
+		} else {
+			send++
+		}
+	}
+	return apply, send
+}
+
+func (cc *CouponChaincode) getCouponOfBatch(stub *shim.ChaincodeStub, sn string) ([]string, error) {
+	key := COUPONS_OF_BATCH_KEY + sn
+	return cc.getSplitableValues(stub, key)
+}
+
+func (cc *CouponChaincode) saveCouponOfBatch(stub *shim.ChaincodeStub, cp *Coupon) error {
+	newSn := ""
+	if cp.ReceiveType == APPLY {
+		newSn = cp.Sn + "a"
+	} else {
+		newSn = cp.Sn + "s"
+	}
+	key := COUPONS_OF_BATCH_KEY + cp.BatchSn
+	return cc.appendSplitableValue(stub, key, newSn)
 
 }
 
-func getCurMilliseconds() uint64 {
+func (cc *CouponChaincode) getSplitableValues(stub *shim.ChaincodeStub, key string) ([]string, error) {
+	bytes, err := stub.GetState(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if bytes == nil || len(bytes) < 1 {
+		return []string{}, nil
+	}
+	return strings.Split(string(bytes), ","), nil
+}
+
+func (cc *CouponChaincode) appendSplitableValue(stub *shim.ChaincodeStub, key string, value string) error {
+	values, err := cc.getSplitableValues(stub, key)
+	if err != nil {
+		return err
+	}
+	for _, v := range values {
+		//重复的数据不保存
+		if v == value {
+			return nil
+		}
+
+	}
+	values = append(values, value)
+	s := strings.Join(values, ",")
+	return stub.PutState(key, []byte(s))
+}
+
+func getCurMilliSeconds() int64 {
 	return time.Now().UnixNano() / 1000000
 }
 

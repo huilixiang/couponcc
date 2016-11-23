@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	"log"
-	"time"
-	//"strconv"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -85,7 +85,8 @@ type Coupon struct {
 	CreateDate  int64  `json:"createDate,omitempty"`
 	Creator     uint64 `json:"creator,omitempty"`
 	Owner       uint64 `json:"owner,omitempty"`
-	Status      int    `json:"status,omitempty"`
+	// 1->未使用，2->已使用，3-->冻结
+	Status int `json:"status,omitempty"`
 }
 
 //优惠券批次dto
@@ -141,9 +142,11 @@ func (cc *CouponChaincode) Invoke(stub shim.ChaincodeStubInterface, function str
 		re, err := cc.applyCoupon(ccStub, args)
 		return re, err
 	} else if "sendCoupon" == function {
-
+		re, err := cc.sendCoupon(ccStub, args)
+		return re, err
 	} else if "consumeCoupon" == function {
-
+		re, err := cc.consumeCoupon(ccStub, args)
+		return re, err
 	} else if "disableCouponBatch" == function {
 
 	} else if "publishCouponBatch" == function {
@@ -258,7 +261,7 @@ func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) 
 	if err != nil {
 		return nil, fmt.Errorf("getCouponBatch error: %v", err)
 	}
-	ok, err := cc.checkCouponBatch(couponBatch)
+	ok, err := cc.checkCouponBatch(stub, cp, couponBatch)
 	if err != nil {
 		return nil, fmt.Errorf("check CB error: %v", err)
 	}
@@ -284,9 +287,78 @@ func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) 
 	if err != nil {
 		return nil, fmt.Errorf("save user coupon relation error: %v", err)
 	}
-	err = cc.saveCouponBatchOfUser(stub, cp.Owner, cp.BatchSn)
+	err = cc.saveCouponBatchOfUser(stub, strconv.FormatUint(cp.Owner, 10), cp.BatchSn)
 	if err != nil {
 		return nil, fmt.Errorf("save user couponbatch relation error: %v", err)
+	}
+	return []byte("success"), nil
+}
+
+/**
+*发送优惠券处理,现使用与领取优惠券相同的处理流程，由coupon.ReceiveType做逻辑区分
+*
+ */
+func (cc *CouponChaincode) sendCoupon(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
+	return cc.applyCoupon(stub, args)
+}
+
+func (cc *CouponChaincode) consumeCoupon(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
+	if len(args) != 5 {
+		return nil, fmt.Errorf("Invalid number of arguments")
+	}
+	uid, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("uid format error: %v", err)
+	}
+	couponSn := args[1]
+	//couponBatchSn := args[2]
+	orderId := args[2]
+	fmt.Printf("orderId:%s", orderId)
+	price, err := strconv.Atoi(args[3])
+	if err != nil {
+		return nil, fmt.Errorf("price format error: %v", err)
+	}
+	sku := args[4]
+
+	cp, err := cc.getCoupon(stub, couponSn)
+	if err != nil {
+		return nil, fmt.Errorf("GetCoupon error: %v", err)
+	}
+	//优惠券状态验证
+	if cp.Status != 1 {
+		return nil, fmt.Errorf("illegal coupon status")
+	}
+	cb, err := cc.getCouponBatch(stub, cp.BatchSn)
+	if err != nil {
+		return nil, fmt.Errorf("GetCouponBatch error: %v", err)
+	}
+	//优惠券拥有者身份验证
+	if uid != cp.Owner {
+		return nil, fmt.Errorf("illegal user of consuming coupon")
+	}
+	//优惠券批次状态验证
+	if cb.Status != 1 && cb.Status != 2 {
+		return nil, fmt.Errorf("illegal couponbatch status")
+	}
+	//优惠券有效期验证
+	now := getCurMilliSeconds()
+	if now > cb.ExpiringDate {
+		return nil, fmt.Errorf("expired coupon")
+	}
+	//满减订单金额验证
+	if cb.CouponType == 0 && price < cb.OrderPriceLimit {
+		return nil, fmt.Errorf("price limit not satisfied")
+	}
+	//下单立减sku验证
+	if cb.CouponType == 1 {
+		if !strings.Contains(cb.Sku, sku) {
+			return nil, fmt.Errorf("sku limit not satisfied")
+		}
+	}
+	cp.Status = 2
+	err = cc.saveCoupon(stub, cp)
+	if err != nil {
+		return nil, fmt.Errorf("update coupon status error: %v", err)
 	}
 	return []byte("success"), nil
 }
@@ -296,8 +368,22 @@ func (cc *CouponChaincode) saveCoupon(stub *shim.ChaincodeStub, cp *Coupon) erro
 	if err != nil {
 		return fmt.Errorf("json.Marshal cb error, %v", err)
 	}
-	err = stub.PutState(COUPON_KEY+cp.BatchSn+cp.Sn, jsonBytes)
+	err = stub.PutState(COUPON_KEY+cp.Sn, jsonBytes)
 	return err
+}
+
+func (cc *CouponChaincode) getCoupon(stub *shim.ChaincodeStub, sn string) (*Coupon, error) {
+	key := COUPON_KEY + sn
+	bytes, err := stub.GetState(key)
+	if err != nil {
+		return nil, err
+	}
+	cp := &Coupon{}
+	err = json.Unmarshal(bytes, cp)
+	if err != nil {
+		return nil, err
+	}
+	return cp, nil
 }
 
 //将cb json后，存入worldstate
@@ -325,7 +411,7 @@ func (cc *CouponChaincode) getCouponBatch(stub *shim.ChaincodeStub, sn string) (
 }
 
 //检验cb的有效性
-func (cc *CouponChaincode) checkCouponBatch(cb *CouponBatch) (bool, error) {
+func (cc *CouponChaincode) checkCouponBatch(stub *shim.ChaincodeStub, cp *Coupon, cb *CouponBatch) (bool, error) {
 	//status 验证
 	if cb.Status != 1 && cb.Status != 2 {
 		return false, nil
@@ -334,12 +420,26 @@ func (cc *CouponChaincode) checkCouponBatch(cb *CouponBatch) (bool, error) {
 	if now < cb.PublishDate || now < cb.ApplyStartDate || now > cb.ExpiringDate {
 		return false, nil
 	}
+	cps, err := cc.getCouponOfBatch(stub, cb.Sn)
+	if err != nil {
+		return false, nil
+	}
+	ac, _ := cc.applyAndSendAmount(cps)
+	if cp.ReceiveType == APPLY {
+		//当前批次可领取总量限制
+		if ac >= cb.CouponAmount {
+			return false, nil
+		}
+	} else {
+		//发放现在没有限制
+
+	}
 	return true, nil
 }
 
 func (cc *CouponChaincode) checkUserLegality(stub *shim.ChaincodeStub, coupon *Coupon, cb *CouponBatch) (bool, error) {
 	//获取用户在当前批次下已经领取的优惠券
-	coupons, err := cc.getCouponsOfUserBatch(stub, coupon.Owner, cb.Sn)
+	coupons, err := cc.getCouponsOfUserBatch(stub, strconv.FormatUint(coupon.Owner, 10), cb.Sn)
 	if err != nil {
 		return false, err
 	}
@@ -355,8 +455,8 @@ func (cc *CouponChaincode) checkUserLegality(stub *shim.ChaincodeStub, coupon *C
 	return true, nil
 }
 
-func (cc *CouponChaincode) getCouponsOfUserBatch(stub *shim.ChaincodeStub, uid uint64, sn string) ([]string, error) {
-	key := COUPONS_OF_USER_BATCH_KEY + string(uid) + sn
+func (cc *CouponChaincode) getCouponsOfUserBatch(stub *shim.ChaincodeStub, uid string, sn string) ([]string, error) {
+	key := COUPONS_OF_USER_BATCH_KEY + uid + sn
 	return cc.getSplitableValues(stub, key)
 }
 
@@ -367,17 +467,17 @@ func (cc *CouponChaincode) saveCouponsOfUserBatch(stub *shim.ChaincodeStub, cp *
 	} else {
 		newSn = cp.Sn + "s"
 	}
-	key := COUPONS_OF_USER_BATCH_KEY + string(cp.Owner) + cp.BatchSn
+	key := COUPONS_OF_USER_BATCH_KEY + strconv.FormatUint(cp.Owner, 10) + cp.BatchSn
 	return cc.appendSplitableValue(stub, key, newSn)
 }
 
-func (cc *CouponChaincode) getCouponBatchsOfUser(stub *shim.ChaincodeStub, uid uint64) ([]string, error) {
-	key := COUPONBATCH_OF_USER_KEY + string(uid)
+func (cc *CouponChaincode) getCouponBatchsOfUser(stub *shim.ChaincodeStub, uid string) ([]string, error) {
+	key := COUPONBATCH_OF_USER_KEY + uid
 	return cc.getSplitableValues(stub, key)
 }
 
-func (cc *CouponChaincode) saveCouponBatchOfUser(stub *shim.ChaincodeStub, uid uint64, sn string) error {
-	key := COUPONBATCH_OF_USER_KEY + string(uid)
+func (cc *CouponChaincode) saveCouponBatchOfUser(stub *shim.ChaincodeStub, uid string, sn string) error {
+	key := COUPONBATCH_OF_USER_KEY + uid
 	return cc.appendSplitableValue(stub, key, sn)
 }
 

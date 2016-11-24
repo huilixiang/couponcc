@@ -148,9 +148,11 @@ func (cc *CouponChaincode) Invoke(stub shim.ChaincodeStubInterface, function str
 		re, err := cc.consumeCoupon(ccStub, args)
 		return re, err
 	} else if "disableCouponBatch" == function {
-
+		re, err := cc.disableCouponBatch(ccStub, args)
+		return re, err
 	} else if "publishCouponBatch" == function {
-
+		re, err := cc.publishCouponBatch(ccStub, args)
+		return re, err
 	} else {
 
 	}
@@ -361,6 +363,43 @@ func (cc *CouponChaincode) consumeCoupon(stub *shim.ChaincodeStub, args []string
 		return nil, fmt.Errorf("update coupon status error: %v", err)
 	}
 	return []byte("success"), nil
+}
+
+func (cc *CouponChaincode) disableCouponBatch(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("Invalid number of auguments")
+	}
+	sn := args[0]
+	cb, err := cc.getCouponBatch(stub, sn)
+	if err != nil {
+		return nil, err
+	}
+	cb.Status = -2
+	err = cc.saveCouponBatch(stub, cb)
+	if err != nil {
+		return nil, err
+	}
+	return []byte("success"), nil
+}
+
+func (cc *CouponChaincode) publishCouponBatch(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("Invalid number of arguments")
+	}
+	sn := args[0]
+	cb, err := cc.getCouponBatch(stub, sn)
+	if err != nil {
+		return nil, err
+	}
+	now := getCurMilliSeconds()
+	cb.PublishDate = now
+	cb.Status = 1
+	err = cc.saveCouponBatch(stub, cb)
+	if err != nil {
+		return nil, err
+	}
+	return []byte("success"), nil
+
 }
 
 func (cc *CouponChaincode) saveCoupon(stub *shim.ChaincodeStub, cp *Coupon) error {

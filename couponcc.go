@@ -169,7 +169,7 @@ func (cc *CouponChaincode) Query(stub shim.ChaincodeStubInterface, function stri
 }
 
 func (cc *CouponChaincode) queryCouponBatch(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
-	fmt.Printf("in queryCouponBatch")
+	fmt.Printf("in queryCouponBatch\n")
 	if len(args) != 1 {
 		return nil, fmt.Errorf("Invalid number of arguments")
 	}
@@ -209,6 +209,7 @@ func (cc *CouponChaincode) cb2Dto(cb *CouponBatch) *CouponBatchDto {
 		EffectiveStartTime: cb.EffectiveDate, EffectiveEndTime: cb.ExpiringDate,
 		Money: cb.Denomination, ShopId: cb.ShopId, BatchName: cb.Name, Status: cb.Status,
 		Description: cb.Desc, Picture: cb.Picture, PublishTime: cb.PublishDate}
+	dto.UsageRule = make(map[string]interface{})
 	dto.UsageRule["minAmount"] = cb.OrderPriceLimit
 	return dto
 }
@@ -439,9 +440,14 @@ func (cc *CouponChaincode) saveCouponBatch(stub *shim.ChaincodeStub, cb *CouponB
 func (cc *CouponChaincode) getCouponBatch(stub *shim.ChaincodeStub, sn string) (*CouponBatch, error) {
 	bytes, err := stub.GetState(COUPON_BATCH_KEY + sn)
 	if err != nil {
+		fmt.Printf("get cb from state error, %v", err)
 		return nil, err
 	}
+	if bytes == nil || len(bytes) == 0 {
+		return nil, nil
+	}
 	cb := &CouponBatch{}
+	fmt.Printf("couponbatch:%s", string(bytes))
 	err = json.Unmarshal(bytes, cb)
 	if err != nil {
 		return nil, fmt.Errorf("json.Unmarshal error:%v", err)

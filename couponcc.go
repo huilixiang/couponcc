@@ -178,6 +178,10 @@ func (cc *CouponChaincode) queryCouponBatch(stub *shim.ChaincodeStub, args []str
 	if err != nil {
 		return nil, fmt.Errorf("Get Coupon Batch error: %v", err)
 	}
+	fmt.Print("new cc\n")
+	if cb == nil {
+		return []byte("not found"), nil
+	}
 	fmt.Printf("coupon batch: %v", cb)
 	dto := cc.cb2Dto(cb)
 	bytes, err := json.Marshal(dto)

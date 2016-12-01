@@ -170,6 +170,7 @@ func (cc *CouponChaincode) Query(stub shim.ChaincodeStubInterface, function stri
 
 func (cc *CouponChaincode) queryCouponBatch(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
 	fmt.Printf("in queryCouponBatch\n")
+	return nil, fmt.Errorf("Rejected?")
 	if len(args) != 1 {
 		return nil, fmt.Errorf("Invalid number of arguments")
 	}
@@ -240,13 +241,20 @@ func (cc *CouponChaincode) createCouponBatch(stub *shim.ChaincodeStub, args []st
 	cbDto := &CouponBatchDto{}
 	err := json.Unmarshal([]byte(args[0]), cbDto)
 	if err != nil {
-		return nil, fmt.Errorf("json.Unmarshal args[0] error: %v", err)
+		return nil, fmt.Errorf("Request arguments format error: %v", err)
 	}
-	fmt.Printf("CouponBatchDto:%v", cbDto)
+	log.Printf("CouponBatchDto:%v", cbDto)
+	existed_cb, err := cc.getCoupon(stub, cbDto.BatchSn)
+	if err != nil {
+		return nil, fmt.Errorf("Check CouponBatch error: %v", err)
+	}
+	if existed_cb != nil {
+		return []byte("CouponBatch existed"), nil
+	}
 	cb := cc.cbDto2Cb(cbDto)
 	err = cc.saveCouponBatch(stub, cb)
 	if err != nil {
-		return nil, fmt.Errorf("save CB error: %v", err)
+		return nil, fmt.Errorf("Save CouponBatch error: %v", err)
 	}
 	return []byte("success"), nil
 }
@@ -261,26 +269,29 @@ func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) 
 	cpDto := &CouponInfoDto{}
 	err := json.Unmarshal([]byte(args[0]), cpDto)
 	if err != nil {
-		return nil, fmt.Errorf("json.Unmarshal args[0] error: %v", err)
+		return nil, fmt.Errorf("Request CouponDto format error: %v", err)
 	}
 	cp := cc.cpDto2Cp(cpDto)
 	couponBatch, err := cc.getCouponBatch(stub, cp.Sn)
 	if err != nil {
-		return nil, fmt.Errorf("getCouponBatch error: %v", err)
+		return nil, fmt.Errorf("Get CouponBatch error: %v", err)
+	}
+	if couponBatch == nil {
+		return []byte("CouponBatch not found"), nil
 	}
 	ok, err := cc.checkCouponBatch(stub, cp, couponBatch)
 	if err != nil {
-		return nil, fmt.Errorf("check CB error: %v", err)
+		return nil, fmt.Errorf("Error occured while checking CouponBatch: %v", err)
 	}
 	if !ok {
-		return nil, fmt.Errorf("invalid CB")
+		return []byte("Invalid CouponBatch"), nil
 	}
 	ok, err = cc.checkUserLegality(stub, cp, couponBatch)
 	if err != nil {
-		return nil, fmt.Errorf("check user error:%v", err)
+		return nil, fmt.Errorf("Error occured while checking UserLegality: %v", err)
 	}
 	if !ok {
-		return nil, fmt.Errorf("illegal user")
+		return []byte("illegal applyment"), nil
 	}
 	err = cc.saveCoupon(stub, cp)
 	if err != nil {
@@ -377,12 +388,15 @@ func (cc *CouponChaincode) disableCouponBatch(stub *shim.ChaincodeStub, args []s
 	sn := args[0]
 	cb, err := cc.getCouponBatch(stub, sn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Get CouponBatch error: %v", err)
+	}
+	if cb == nil {
+		return []byte("CouponBatch not found"), nil
 	}
 	cb.Status = -2
 	err = cc.saveCouponBatch(stub, cb)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Save CouponBatch error: %v", err)
 	}
 	return []byte("success"), nil
 }
@@ -394,14 +408,17 @@ func (cc *CouponChaincode) publishCouponBatch(stub *shim.ChaincodeStub, args []s
 	sn := args[0]
 	cb, err := cc.getCouponBatch(stub, sn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Check CouponBatch error: %v", err)
+	}
+	if cb == nil {
+		return []byte("CouponBatch not found"), nil
 	}
 	now := getCurMilliSeconds()
 	cb.PublishDate = now
 	cb.Status = 1
 	err = cc.saveCouponBatch(stub, cb)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errof("Save CouponBatch error: %v", err)
 	}
 	return []byte("success"), nil
 

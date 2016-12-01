@@ -249,7 +249,7 @@ func (cc *CouponChaincode) createCouponBatch(stub *shim.ChaincodeStub, args []st
 		return nil, fmt.Errorf("Check CouponBatch error: %v", err)
 	}
 	if existed_cb != nil {
-		return []byte("CouponBatch existed"), nil
+		return nil, fmt.Errorf("CouponBatch existed")
 	}
 	cb := cc.cbDto2Cb(cbDto)
 	err = cc.saveCouponBatch(stub, cb)

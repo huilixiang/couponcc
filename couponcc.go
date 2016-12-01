@@ -418,7 +418,7 @@ func (cc *CouponChaincode) publishCouponBatch(stub *shim.ChaincodeStub, args []s
 	cb.Status = 1
 	err = cc.saveCouponBatch(stub, cb)
 	if err != nil {
-		return nil, fmt.Errof("Save CouponBatch error: %v", err)
+		return nil, fmt.Errorf("Save CouponBatch error: %v", err)
 	}
 	return []byte("success"), nil
 

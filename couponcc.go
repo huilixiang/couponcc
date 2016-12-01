@@ -170,7 +170,6 @@ func (cc *CouponChaincode) Query(stub shim.ChaincodeStubInterface, function stri
 
 func (cc *CouponChaincode) queryCouponBatch(stub *shim.ChaincodeStub, args []string) ([]byte, error) {
 	fmt.Printf("in queryCouponBatch\n")
-	return nil, fmt.Errorf("Rejected?")
 	if len(args) != 1 {
 		return nil, fmt.Errorf("Invalid number of arguments")
 	}

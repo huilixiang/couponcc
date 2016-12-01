@@ -244,7 +244,7 @@ func (cc *CouponChaincode) createCouponBatch(stub *shim.ChaincodeStub, args []st
 		return nil, fmt.Errorf("Request arguments format error: %v", err)
 	}
 	log.Printf("CouponBatchDto:%v", cbDto)
-	existed_cb, err := cc.getCoupon(stub, cbDto.BatchSn)
+	existed_cb, err := cc.getCouponBatch(stub, cbDto.BatchSn)
 	if err != nil {
 		return nil, fmt.Errorf("Check CouponBatch error: %v", err)
 	}

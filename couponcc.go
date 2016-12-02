@@ -18,11 +18,12 @@ const (
 )
 
 const (
-	COUPON_BATCH_KEY          = "CPB_"
-	COUPON_KEY                = "CP_"
-	COUPONS_OF_BATCH_KEY      = "COB_"
-	COUPONBATCH_OF_USER_KEY   = "CBOU_"
-	COUPONS_OF_USER_BATCH_KEY = "COUB_"
+	COUPON_BATCH_KEY              = "CPB_"
+	COUPON_KEY                    = "CP_"
+	COUPONS_OF_BATCH_KEY          = "COB_"
+	COUPONBATCH_OF_USER_KEY       = "CBOU_"
+	COUPONS_OF_USER_BATCH_KEY     = "COUB_"
+	CONSUMED_COUPONS_OF_BATCH_KEY = "CCCOB_"
 )
 
 //优惠券批次信息
@@ -202,6 +203,11 @@ func (cc *CouponChaincode) cbDto2Cb(cbDto *CouponBatchDto) *CouponBatch {
 	if cbDto.UsageRuleType == 1 {
 		cb.OrderPriceLimit = cbDto.UsageRule["minAmount"].(int)
 	}
+	quantityMap := cbDto.Quantity
+	if quantityMap != nil {
+		cb.CouponAmount = quantityMap["allQuantity"].(int)
+		//TODO.....other props of quantity
+	}
 	return cb
 
 }
@@ -215,6 +221,11 @@ func (cc *CouponChaincode) cb2Dto(cb *CouponBatch) *CouponBatchDto {
 		Description: cb.Desc, Picture: cb.Picture, PublishTime: cb.PublishDate}
 	dto.UsageRule = make(map[string]interface{})
 	dto.UsageRule["minAmount"] = cb.OrderPriceLimit
+	dto.Quantity = make(map[string]interface{})
+	dto.Quantity["allQuantity"] = cb.CouponAmount
+	dto.Quantity["receiveQuantity"] = cb.AppliedAmount
+	dto.Quantity["givenQuantity"] = cb.SentAmount
+	dto.Quantity["usedQuantity"] = cb.ConsumedAmount
 	return dto
 }
 
@@ -387,6 +398,10 @@ func (cc *CouponChaincode) consumeCoupon(stub *shim.ChaincodeStub, args []string
 	if err != nil {
 		return nil, fmt.Errorf("update coupon status error: %v", err)
 	}
+	err = cc.increConsumedCount(stub, cp.BatchSn, 1)
+	if err != nil {
+		return nil, fmt.Errorf("incre consumed count error: %v", err)
+	}
 	return []byte("success"), nil
 }
 
@@ -432,7 +447,6 @@ func (cc *CouponChaincode) publishCouponBatch(stub *shim.ChaincodeStub, args []s
 	return []byte("success"), nil
 
 }
-
 func (cc *CouponChaincode) saveCoupon(stub *shim.ChaincodeStub, cp *Coupon) error {
 	jsonBytes, err := json.Marshal(cp)
 	if err != nil {
@@ -485,6 +499,21 @@ func (cc *CouponChaincode) getCouponBatch(stub *shim.ChaincodeStub, sn string) (
 	err = json.Unmarshal(bytes, cb)
 	if err != nil {
 		return nil, fmt.Errorf("json.Unmarshal error:%v", err)
+	}
+	coupons, err := cc.getCouponOfBatch(stub, sn)
+	if err != nil {
+		return nil, err
+	}
+	if coupons != nil {
+		ac, sc := cc.applyAndSendAmount(coupons)
+		cb.AppliedAmount = ac
+		cb.SentAmount = sc
+	}
+	consumed, err := cc.getConsumedCount(stub, sn)
+	if err != nil {
+		return nil, err
+	} else {
+		cb.ConsumedAmount = consumed
 	}
 	return cb, nil
 }
@@ -623,6 +652,34 @@ func (cc *CouponChaincode) appendSplitableValue(stub *shim.ChaincodeStub, key st
 	values = append(values, value)
 	s := strings.Join(values, ",")
 	return stub.PutState(key, []byte(s))
+}
+
+func (cc *CouponChaincode) getConsumedCount(stub *shim.ChaincodeStub, batchSn string) (int, error) {
+	key := CONSUMED_COUPONS_OF_BATCH_KEY + batchSn
+	bytes, err := stub.GetState(key)
+	if err != nil {
+		return 0, err
+	}
+	if bytes == nil || len(bytes) == 0 {
+		return 0, nil
+	}
+	val, err := strconv.Atoi(string(bytes))
+	if err != nil {
+		return 0, err
+	}
+	return val, nil
+}
+
+func (cc *CouponChaincode) increConsumedCount(stub *shim.ChaincodeStub, batchSn string, count int) error {
+	consumed, err := cc.getConsumedCount(stub, batchSn)
+	if err != nil {
+		return err
+	}
+	consumed = consumed + count
+	key := CONSUMED_COUPONS_OF_BATCH_KEY + batchSn
+	err = stub.PutState(key, []byte(strconv.Itoa(consumed)))
+	return err
+
 }
 
 func getCurMilliSeconds() int64 {

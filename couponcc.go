@@ -499,6 +499,7 @@ func (cc *CouponChaincode) checkCouponBatch(stub *shim.ChaincodeStub, cp *Coupon
 	}
 	now := getCurMilliSeconds()
 	if now < cb.PublishDate || (cb.ApplyStartDate > 0 && now < cb.ApplyStartDate) || now > cb.ExpiringDate {
+		log.Printf("now: %d, publishDate: %d, applyStartDate: %d, expiringDate: %d", now, cb.PublishDate, cb.ApplyStartDate, cb.ExpiringDate)
 		return false, nil
 	}
 	cps, err := cc.getCouponOfBatch(stub, cb.Sn)

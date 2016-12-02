@@ -493,12 +493,18 @@ func (cc *CouponChaincode) getCouponBatch(stub *shim.ChaincodeStub, sn string) (
 func (cc *CouponChaincode) checkCouponBatch(stub *shim.ChaincodeStub, cp *Coupon, cb *CouponBatch) (bool, error) {
 	//status 验证
 	if cb.Status != 1 && cb.Status != 2 {
-		return false, nil
+		return false, fmt.Errorf("CouponBatch`status is invalid")
 	}
 	now := getCurMilliSeconds()
-	if now < cb.PublishDate || (cb.ApplyStartDate > 0 && now < cb.ApplyStartDate) || now > cb.ExpiringDate {
-		log.Printf("now: %d, publishDate: %d, applyStartDate: %d, expiringDate: %d", now, cb.PublishDate, cb.ApplyStartDate, cb.ExpiringDate)
-		return false, nil
+	if now < cb.PublishDate {
+		return false, fmt.Errorf("before PublishDate")
+
+	}
+	if cb.ApplyStartDate > 0 && now < cb.ApplyStartDate {
+		return false, fmt.Errorf("before ApplyStartDate")
+	}
+	if now > cb.ExpiringDate {
+		return false, fmt.Errorf("after ExpiringDate")
 	}
 	cps, err := cc.getCouponOfBatch(stub, cb.Sn)
 	if err != nil {
@@ -508,11 +514,10 @@ func (cc *CouponChaincode) checkCouponBatch(stub *shim.ChaincodeStub, cp *Coupon
 	if cp.ReceiveType == APPLY {
 		//当前批次可领取总量限制
 		if ac >= cb.CouponAmount {
-			return false, nil
+			return false, fmt.Errorf("No free coupon left")
 		}
 	} else {
 		//发放现在没有限制
-
 	}
 	return true, nil
 }
@@ -530,7 +535,7 @@ func (cc *CouponChaincode) checkUserLegality(stub *shim.ChaincodeStub, coupon *C
 	ac, _ := cc.applyAndSendAmount(coupons)
 	//已领取数量不能大于批次限制
 	if ac >= cb.ApplyLimit {
-		return false, nil
+		return false, fmt.Errorf("Can't exceed the preset apply-limit")
 	}
 	return true, nil
 }

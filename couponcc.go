@@ -220,7 +220,7 @@ func (cc *CouponChaincode) cb2Dto(cb *CouponBatch) *CouponBatchDto {
 
 //coupon dto --> cp
 func (cc *CouponChaincode) cpDto2Cp(dto *CouponInfoDto) *Coupon {
-	cp := &Coupon{Id: dto.Id, BatchSn: dto.BatchSn, Sn: "",
+	cp := &Coupon{Id: dto.Id, BatchSn: dto.BatchSn, Sn: dto.CouponSn,
 		ReceiveType: dto.ReceiveType, Owner: dto.UserId, Status: dto.Status}
 	return cp
 }
@@ -334,10 +334,8 @@ func (cc *CouponChaincode) consumeCoupon(stub *shim.ChaincodeStub, args []string
 	if err != nil {
 		return nil, fmt.Errorf("uid format error: %v", err)
 	}
+	log.Printf("args: %v", args)
 	couponSn := args[1]
-	//couponBatchSn := args[2]
-	orderId := args[2]
-	fmt.Printf("orderId:%s", orderId)
 	price, err := strconv.Atoi(args[3])
 	if err != nil {
 		return nil, fmt.Errorf("price format error: %v", err)

@@ -278,7 +278,7 @@ func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) 
 		return nil, fmt.Errorf("Coupon existed")
 	}
 	cp = cc.cpDto2Cp(cpDto)
-	couponBatch, err := cc.getCouponBatch(stub, cp.Sn)
+	couponBatch, err := cc.getCouponBatch(stub, cp.BatchSn)
 	if err != nil {
 		return nil, fmt.Errorf("Get CouponBatch error: %v", err)
 	}

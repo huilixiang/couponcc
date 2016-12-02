@@ -270,27 +270,34 @@ func (cc *CouponChaincode) applyCoupon(stub *shim.ChaincodeStub, args []string) 
 	if err != nil {
 		return nil, fmt.Errorf("Request CouponDto format error: %v", err)
 	}
-	cp := cc.cpDto2Cp(cpDto)
+	cp, err := cc.getCoupon(stub, cpDto.CouponSn)
+	if err != nil {
+		return nil, fmt.Errorf("Check Coupon error: %v", err)
+	}
+	if cp != nil {
+		return nil, fmt.Errorf("Coupon existed")
+	}
+	cp = cc.cpDto2Cp(cpDto)
 	couponBatch, err := cc.getCouponBatch(stub, cp.Sn)
 	if err != nil {
 		return nil, fmt.Errorf("Get CouponBatch error: %v", err)
 	}
 	if couponBatch == nil {
-		return []byte("CouponBatch not found"), nil
+		return nil, fmt.Errorf("CouponBatch not found")
 	}
 	ok, err := cc.checkCouponBatch(stub, cp, couponBatch)
 	if err != nil {
 		return nil, fmt.Errorf("Error occured while checking CouponBatch: %v", err)
 	}
 	if !ok {
-		return []byte("Invalid CouponBatch"), nil
+		return nil, fmt.Errorf("Invalid CouponBatch")
 	}
 	ok, err = cc.checkUserLegality(stub, cp, couponBatch)
 	if err != nil {
 		return nil, fmt.Errorf("Error occured while checking UserLegality: %v", err)
 	}
 	if !ok {
-		return []byte("illegal applyment"), nil
+		return nil, fmt.Errorf("illegal applyment")
 	}
 	err = cc.saveCoupon(stub, cp)
 	if err != nil {
@@ -336,10 +343,12 @@ func (cc *CouponChaincode) consumeCoupon(stub *shim.ChaincodeStub, args []string
 		return nil, fmt.Errorf("price format error: %v", err)
 	}
 	sku := args[4]
-
 	cp, err := cc.getCoupon(stub, couponSn)
 	if err != nil {
 		return nil, fmt.Errorf("GetCoupon error: %v", err)
+	}
+	if cp == nil {
+		return nil, fmt.Errorf("Coupon not found")
 	}
 	//优惠券状态验证
 	if cp.Status != 1 {
@@ -349,9 +358,12 @@ func (cc *CouponChaincode) consumeCoupon(stub *shim.ChaincodeStub, args []string
 	if err != nil {
 		return nil, fmt.Errorf("GetCouponBatch error: %v", err)
 	}
+	if cb == nil {
+		return nil, fmt.Errorf("CouponBatch not found")
+	}
 	//优惠券拥有者身份验证
 	if uid != cp.Owner {
-		return nil, fmt.Errorf("illegal user of consuming coupon")
+		return nil, fmt.Errorf("Consumer must be same as the owner of coupon")
 	}
 	//优惠券批次状态验证
 	if cb.Status != 1 && cb.Status != 2 {

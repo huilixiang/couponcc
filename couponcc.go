@@ -450,6 +450,9 @@ func (cc *CouponChaincode) getCoupon(stub *shim.ChaincodeStub, sn string) (*Coup
 	if err != nil {
 		return nil, err
 	}
+	if bytes == nil || len(bytes) == 0 {
+		return nil, nil
+	}
 	cp := &Coupon{}
 	err = json.Unmarshal(bytes, cp)
 	if err != nil {

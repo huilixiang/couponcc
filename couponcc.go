@@ -498,12 +498,12 @@ func (cc *CouponChaincode) checkCouponBatch(stub *shim.ChaincodeStub, cp *Coupon
 		return false, nil
 	}
 	now := getCurMilliSeconds()
-	if now < cb.PublishDate || now < cb.ApplyStartDate || now > cb.ExpiringDate {
+	if now < cb.PublishDate || (cb.ApplyStartDate > 0 && now < cb.ApplyStartDate) || now > cb.ExpiringDate {
 		return false, nil
 	}
 	cps, err := cc.getCouponOfBatch(stub, cb.Sn)
 	if err != nil {
-		return false, nil
+		return false, err
 	}
 	ac, _ := cc.applyAndSendAmount(cps)
 	if cp.ReceiveType == APPLY {
